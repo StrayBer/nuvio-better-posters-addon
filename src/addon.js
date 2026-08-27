@@ -70,7 +70,7 @@ export function buildProxyManifest(config, upstreams, publicBaseUrl) {
   return {
     id: `cc.btttr.nuvio.proxy.${configFingerprint(config)}`,
     version: "1.0.0",
-    name: "BetterPosters for Nuvio",
+    name: "BetterPosters Cinemeta Proxy",
     description: `BetterPosters wrapper for ${upstreams.length} addon${upstreams.length === 1 ? "" : "s"}. IMDb-backed catalog and metadata posters use poster-default.`,
     logo: `${publicBaseUrl.replace(/\/$/, "")}/logo.svg`,
     resources,
