@@ -50,7 +50,7 @@ export function buildProxyManifest(config, upstreams, publicBaseUrl) {
       return [{
         ...catalog,
         id: encodeCatalogId(upstreamIndex, catalog.id),
-        name: `${catalog.name || catalog.id} · BetterPosters (${manifest.name})`,
+        name: catalog.name || catalog.id,
       }];
     }),
   );
