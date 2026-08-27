@@ -7,3 +7,5 @@ services:
     envVars:
       - key: ALLOW_PRIVATE_UPSTREAMS
         value: "0"
+      - key: MIGRATION_TARGET_BASE_URL
+        value: "https://nuvio-better-posters.nuvio-better-posters-addon.workers.dev"

@@ -8,8 +8,18 @@
     "node": ">=20"
   },
   "scripts": {
-    "start": "node src/server.js",
+    "start": "node src/redirect-server.js",
+    "start:origin": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "worker:dev": "wrangler dev",
+    "worker:types": "wrangler types",
+    "worker:check": "wrangler deploy --dry-run",
+    "worker:deploy": "wrangler deploy --minify"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260827.1",
+    "@types/node": "^24.3.0",
+    "wrangler": "^4.127.0"
   }
 }

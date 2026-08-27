@@ -10,4 +10,4 @@ ENV PORT=7000
 EXPOSE 7000
 
 USER node
-CMD ["node", "src/server.js"]
+CMD ["node", "src/redirect-server.js"]

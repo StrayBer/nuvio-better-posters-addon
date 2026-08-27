@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "nuvio-better-posters",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-08-27",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": true,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.01
+  },
+  "rules": [
+    {
+      "type": "Text",
+      "globs": ["**/*.html", "**/*.svg"],
+      "fallthrough": true
+    }
+  ]
+}
