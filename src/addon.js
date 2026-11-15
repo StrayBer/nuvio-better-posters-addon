@@ -14,8 +14,8 @@ const PROXIED_RESOURCES = ["meta", "stream", "subtitles"];
 // addon. Their posters already carry the rank number and tags, so they are
 // passed through untouched. The lists are a fixed top 25 with no paging.
 const TOP_TODAY_CATALOGS = [
-  { type: "series", id: "bp_top_shows_today", name: "Top Shows Today", source: "https://btttr.cc/catalog/series/tmdb-today-shows.json" },
   { type: "movie", id: "bp_top_movies_today", name: "Top Movies Today", source: "https://btttr.cc/catalog/movie/tmdb-today.json" },
+  { type: "series", id: "bp_top_shows_today", name: "Top Shows Today", source: "https://btttr.cc/catalog/series/tmdb-today-shows.json" },
 ];
 
 // Preferred home-screen order for the Nuvio Catalog's rows: what is hot and
@@ -54,6 +54,62 @@ function rowRank(catalogId) {
   if (preferred >= 0) return preferred;
   const last = BROWSE_ROWS_LAST.indexOf(catalogId);
   return last >= 0 ? 2_000 + last : 1_000;
+}
+
+const MAX_POSTER_CHECKS = 40;
+const POSTER_CHECK_TIMEOUT_MS = 4_000;
+
+// BetterPosters answers 200 when it can draw a poster. For titles it has no
+// artwork for it redirects to a backup image host that often has nothing
+// either, which shows up as a broken poster in the app. A HEAD request tells
+// the two apart; when the check itself fails the poster is given the benefit
+// of the doubt.
+async function posterLoads(url, fetchOptions = {}) {
+  if (fetchOptions.checkPosters === false) return true;
+  if (typeof url !== "string" || !url.startsWith("https://btttr.cc/")) return true;
+  const fetchImpl = fetchOptions.fetchImpl ?? globalThis.fetch;
+  try {
+    const response = await fetchImpl(url, {
+      method: "HEAD",
+      redirect: "manual",
+      signal: AbortSignal.timeout(POSTER_CHECK_TIMEOUT_MS),
+    });
+    return response.status === 200;
+  } catch {
+    return true;
+  }
+}
+
+// Puts the original poster back on every item whose BetterPosters image
+// would not load.
+async function keepWorkingPosters(original, rewritten, fetchOptions) {
+  if (!Array.isArray(original?.metas) || !Array.isArray(rewritten?.metas)) return rewritten;
+  const metas = await Promise.all(rewritten.metas.map(async (meta, index) => {
+    const before = original.metas[index];
+    if (index >= MAX_POSTER_CHECKS || !meta || meta.poster === before?.poster) return meta;
+    return (await posterLoads(meta.poster, fetchOptions)) ? meta : before;
+  }));
+  return { ...rewritten, metas };
+}
+
+async function rewriteCatalogChecked(payload, posterOptions, fetchOptions) {
+  return keepWorkingPosters(payload, rewriteCatalogResponse(payload, posterOptions), fetchOptions);
+}
+
+// Top Today items come with a BetterPosters poster only. Items whose poster
+// would not load have no data anywhere else either, so they are left out and
+// the rank numbers on the remaining posters are closed up.
+async function topTodayMetas(source, fetchOptions) {
+  const payload = await fetchJson(source, fetchOptions);
+  const metas = Array.isArray(payload?.metas) ? payload.metas : [];
+  const loads = await Promise.all(metas.map((meta) => posterLoads(meta?.poster, fetchOptions)));
+  return metas
+    .filter((meta, index) => meta && loads[index])
+    .map((meta, index) => (
+      typeof meta.poster === "string"
+        ? { ...meta, poster: meta.poster.replace(/([?&]r=)\d+/, `$1${index + 1}`) }
+        : meta
+    ));
 }
 
 function addonName(upstreams) {
@@ -153,8 +209,7 @@ export async function proxyCatalog({
   const topToday = TOP_TODAY_CATALOGS.find((catalog) => catalog.id === encodedCatalogId && catalog.type === type);
   if (topToday) {
     if (rawExtraSegment != null) return { metas: [] };
-    const payload = await fetchJson(topToday.source, fetchOptions);
-    return { metas: Array.isArray(payload?.metas) ? payload.metas : [] };
+    return { metas: await topTodayMetas(topToday.source, fetchOptions) };
   }
 
   const { upstreamIndex, catalogId } = decodeCatalogId(encodedCatalogId);
@@ -173,7 +228,7 @@ export async function proxyCatalog({
   );
   const searchValue = rawSearchValue(rawExtraSegment);
   if (searchValue == null) {
-    return rewriteCatalogResponse(await fetchJson(resourceUrl, fetchOptions), posterOptions);
+    return rewriteCatalogChecked(await fetchJson(resourceUrl, fetchOptions), posterOptions, fetchOptions);
   }
 
   // Search. The Nuvio Catalog searches TMDB, which returns nothing for a
@@ -189,7 +244,7 @@ export async function proxyCatalog({
   } catch (error) {
     failure = error;
   }
-  if (hasMetas(payload)) return rewriteCatalogResponse(payload, posterOptions);
+  if (hasMetas(payload)) return rewriteCatalogChecked(payload, posterOptions, fetchOptions);
 
   const suggestions = await searchSuggestions(upstream.manifestUrl, type, searchValue, fetchOptions);
   if (suggestions) {
@@ -204,13 +259,13 @@ export async function proxyCatalog({
           buildUpstreamResourceUrl(upstream.manifestUrl, "catalog", type, catalogId, correctedExtra),
           fetchOptions,
         );
-        if (hasMetas(retried)) return rewriteCatalogResponse(retried, posterOptions);
+        if (hasMetas(retried)) return rewriteCatalogChecked(retried, posterOptions, fetchOptions);
       } catch {
         // Fall through to Cinemeta's own results.
       }
     }
     if (suggestions.metas.length > 0) {
-      return rewriteCatalogResponse({ metas: suggestions.metas }, posterOptions);
+      return rewriteCatalogChecked({ metas: suggestions.metas }, posterOptions, fetchOptions);
     }
   }
   if (failure) throw failure;
@@ -392,7 +447,10 @@ export async function proxyAggregateResource({
 
   if (resource === "meta") {
     const response = successful.find((payload) => payload?.meta && typeof payload.meta === "object");
-    return response ? rewriteMetaResponse(response, posterOptions) : { meta: null };
+    if (!response) return { meta: null };
+    const rewritten = rewriteMetaResponse(response, posterOptions);
+    if (Array.isArray(rewritten.meta) || rewritten.meta.poster === response.meta.poster) return rewritten;
+    return (await posterLoads(rewritten.meta.poster, fetchOptions)) ? rewritten : response;
   }
   if (resource === "stream") {
     const streams = successful.flatMap((payload) => Array.isArray(payload?.streams) ? payload.streams : []);

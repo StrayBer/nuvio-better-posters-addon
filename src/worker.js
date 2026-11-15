@@ -35,7 +35,18 @@ const handleRequest = createBetterPostersFetchHandler({
 });
 
 export default {
-  async fetch(request, env) {
-    return handleRequest(request, env);
+  // Catalog and metadata answers are kept at the edge for as long as their
+  // Cache-Control allows, so repeat visits skip the upstream and poster checks.
+  async fetch(request, env, ctx) {
+    if (request.method !== "GET") return handleRequest(request, env);
+    const pathname = new URL(request.url).pathname;
+    const cacheable = pathname.includes("/catalog/") || pathname.includes("/meta/");
+    if (!cacheable) return handleRequest(request, env);
+    const cache = caches.default;
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    const response = await handleRequest(request, env);
+    if (response.status === 200) ctx.waitUntil(cache.put(request, response.clone()));
+    return response;
   },
 };

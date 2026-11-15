@@ -37,7 +37,7 @@ test("builds a Nuvio-compatible aggregate manifest", () => {
   ];
 
   const manifest = buildProxyManifest(config, upstreams, "https://proxy.example");
-  assert.deepEqual(manifest.catalogs.map((catalog) => catalog.name), ["Top Shows Today", "Top Movies Today", "Popular"]);
+  assert.deepEqual(manifest.catalogs.map((catalog) => catalog.name), ["Top Movies Today", "Top Shows Today", "Popular"]);
   manifest.catalogs.splice(0, 2);
   assert.equal(manifest.catalogs[0].name, "Popular");
   assert.equal(manifest.name, "BetterPosters for Nuvio");
