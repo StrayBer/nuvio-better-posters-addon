@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createConfig } from "../src/config.js";
 import {
   buildProxyManifest,
+  correctedSearchValue,
   decodeCatalogId,
   encodeCatalogId,
 } from "../src/addon.js";
@@ -55,4 +56,13 @@ test("names a single wrapped addon after its upstream", () => {
     manifest: { id: "nuvio", name: "Nuvio Catalog Addon", version: "1.0.0", types: ["movie"], resources: ["catalog"], catalogs: [] },
   }], "https://proxy.example");
   assert.equal(manifest.name, "Nuvio Catalog - BetterPosters");
+});
+
+test("corrects misspelled search words from suggested titles", () => {
+  const names = ["Superman", "Superman Returns", "Batman v Superman: Dawn of Justice", "Batman Begins"];
+  assert.equal(correctedSearchValue("suerman", names), "superman");
+  assert.equal(correctedSearchValue("batmn%20begins", names), "batman%20begins");
+  assert.equal(correctedSearchValue("batmn+begins", names), "batman%20begins");
+  assert.equal(correctedSearchValue("superman", names), null);
+  assert.equal(correctedSearchValue("zzqqxxyy", names), null);
 });

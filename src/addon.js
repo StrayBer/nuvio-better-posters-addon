@@ -116,9 +116,12 @@ export async function proxyCatalog({
     return rewriteCatalogResponse(await fetchJson(resourceUrl, fetchOptions), posterOptions);
   }
 
-  // Search: some catalogs (the TMDB-backed Nuvio Catalog, for one) return
-  // nothing for a misspelled title. Cinemeta's search forgives typos, so it
-  // answers whenever the wrapped catalog comes back empty or fails.
+  // Search. The Nuvio Catalog searches TMDB, which returns nothing for a
+  // misspelled title ("suerman"). When the wrapped catalog comes back empty,
+  // Cinemeta's typo-tolerant search is used as a spell-checker and the
+  // corrected words are searched in the wrapped catalog again, so the results
+  // still come from the full wrapped catalog. Only if that also finds nothing
+  // are Cinemeta's own results returned.
   let payload = null;
   let failure = null;
   try {
@@ -126,16 +129,39 @@ export async function proxyCatalog({
   } catch (error) {
     failure = error;
   }
-  const hasResults = Array.isArray(payload?.metas) && payload.metas.length > 0;
-  if (!hasResults) {
-    const fallback = await searchFallback(upstream.manifestUrl, type, searchValue, fetchOptions);
-    if (fallback) return rewriteCatalogResponse(fallback, posterOptions);
+  if (hasMetas(payload)) return rewriteCatalogResponse(payload, posterOptions);
+
+  const suggestions = await searchSuggestions(upstream.manifestUrl, type, searchValue, fetchOptions);
+  if (suggestions) {
+    const corrected = correctedSearchValue(searchValue, suggestions.names);
+    if (corrected) {
+      const correctedExtra = rawExtraSegment
+        .split("&")
+        .map((part) => (part.startsWith("search=") ? `search=${corrected}` : part))
+        .join("&");
+      try {
+        const retried = await fetchJson(
+          buildUpstreamResourceUrl(upstream.manifestUrl, "catalog", type, catalogId, correctedExtra),
+          fetchOptions,
+        );
+        if (hasMetas(retried)) return rewriteCatalogResponse(retried, posterOptions);
+      } catch {
+        // Fall through to Cinemeta's own results.
+      }
+    }
+    if (suggestions.metas.length > 0) {
+      return rewriteCatalogResponse({ metas: suggestions.metas }, posterOptions);
+    }
   }
   if (failure) throw failure;
   return rewriteCatalogResponse(payload, posterOptions);
 }
 
-const SEARCH_FALLBACK_HOST = "v3-cinemeta.strem.io";
+const SPELLCHECK_HOST = "v3-cinemeta.strem.io";
+
+function hasMetas(payload) {
+  return Array.isArray(payload?.metas) && payload.metas.length > 0;
+}
 
 function rawSearchValue(rawExtraSegment) {
   if (typeof rawExtraSegment !== "string") return null;
@@ -147,19 +173,102 @@ function rawSearchValue(rawExtraSegment) {
   return null;
 }
 
-async function searchFallback(manifestUrl, type, searchValue, fetchOptions) {
+// Asks Cinemeta for both movies and series: `names` (best matches first) feed
+// the spell-checker, `metas` are the last-resort results for this type.
+async function searchSuggestions(manifestUrl, type, searchValue, fetchOptions) {
   if (type !== "movie" && type !== "series") return null;
-  if (new URL(manifestUrl).hostname === SEARCH_FALLBACK_HOST) return null;
+  if (new URL(manifestUrl).hostname === SPELLCHECK_HOST) return null;
+  const search = async (searchType) => {
+    try {
+      const payload = await fetchJson(
+        `https://${SPELLCHECK_HOST}/catalog/${searchType}/top/search=${searchValue}.json`,
+        fetchOptions,
+      );
+      return Array.isArray(payload?.metas) ? payload.metas : [];
+    } catch {
+      return [];
+    }
+  };
+  const [movies, series] = await Promise.all([search("movie"), search("series")]);
+  const own = type === "movie" ? movies : series;
+  const other = type === "movie" ? series : movies;
+  const names = [];
+  for (let index = 0; index < Math.max(own.length, other.length); index += 1) {
+    for (const meta of [own[index], other[index]]) {
+      if (typeof meta?.name === "string") names.push(meta.name);
+    }
+  }
+  if (names.length === 0) return null;
+  return { names, metas: own };
+}
+
+function words(text) {
+  return text
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+}
+
+export function editDistance(a, b) {
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      current[j] = Math.min(
+        previous[j] + 1,
+        current[j - 1] + 1,
+        previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    previous = current;
+  }
+  return previous[b.length];
+}
+
+// Replaces each misspelled word of the search with the closest word found in
+// the suggested titles. Returns a URL-encoded search value, or null when
+// nothing needed correcting.
+export function correctedSearchValue(rawValue, names) {
+  let query;
   try {
-    const payload = await fetchJson(
-      `https://${SEARCH_FALLBACK_HOST}/catalog/${type}/top/search=${searchValue}.json`,
-      fetchOptions,
-    );
-    if (!Array.isArray(payload?.metas) || payload.metas.length === 0) return null;
-    return { metas: payload.metas };
+    query = decodeURIComponent(rawValue.replace(/\+/g, " "));
   } catch {
     return null;
   }
+  const vocabulary = [];
+  const known = new Set();
+  for (const name of names) {
+    for (const word of words(name)) {
+      if (!known.has(word)) {
+        known.add(word);
+        vocabulary.push(word);
+      }
+    }
+  }
+  const queryWords = words(query);
+  if (queryWords.length === 0 || queryWords.length > 8) return null;
+
+  let changed = false;
+  const corrected = queryWords.map((word) => {
+    if (known.has(word) || word.length < 3) return word;
+    const allowed = word.length <= 4 ? 1 : word.length <= 8 ? 2 : 3;
+    let best = null;
+    let bestDistance = allowed + 1;
+    for (const candidate of vocabulary) {
+      if (Math.abs(candidate.length - word.length) >= bestDistance) continue;
+      const distance = editDistance(word, candidate);
+      if (distance < bestDistance) {
+        best = candidate;
+        bestDistance = distance;
+      }
+    }
+    if (!best) return word;
+    changed = true;
+    return best;
+  });
+  return changed ? encodeURIComponent(corrected.join(" ")) : null;
 }
 
 function dedupe(items, keyFor) {
