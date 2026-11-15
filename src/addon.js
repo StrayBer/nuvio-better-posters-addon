@@ -10,12 +10,12 @@ import {
 
 const PROXIED_RESOURCES = ["meta", "stream", "subtitles"];
 
-// Ranked "today" lists from BetterPosters, shown as the first rows of the
+// Ranked "today" lists from the TMDB Top Today addon, shown as the first rows of the
 // addon. Their posters already carry the rank number and tags, so they are
-// passed through untouched. The lists are a fixed top 25 with no paging.
+// passed through untouched. The lists are a fixed top 10 with no paging.
 const TOP_TODAY_CATALOGS = [
-  { type: "movie", id: "bp_top_movies_today", name: "Top Movies Today", source: "https://btttr.cc/catalog/movie/tmdb-today.json" },
-  { type: "series", id: "bp_top_shows_today", name: "Top Shows Today", source: "https://btttr.cc/catalog/series/tmdb-today-shows.json" },
+  { type: "movie", id: "bp_top_movies_today", name: "Top Movies Today", source: "https://toptoday.llamayu.com/catalog/movie/top_movies_today.json" },
+  { type: "series", id: "bp_top_shows_today", name: "Top Shows Today", source: "https://toptoday.llamayu.com/catalog/series/top_shows_today.json" },
 ];
 
 // Preferred home-screen order for the Nuvio Catalog's rows: what is hot and
@@ -56,6 +56,7 @@ function rowRank(catalogId) {
   return last >= 0 ? 2_000 + last : 1_000;
 }
 
+const CHECKED_POSTER_HOSTS = ["https://btttr.cc/", "https://toptoday.llamayu.com/"];
 const MAX_POSTER_CHECKS = 40;
 const POSTER_CHECK_TIMEOUT_MS = 4_000;
 
@@ -66,7 +67,7 @@ const POSTER_CHECK_TIMEOUT_MS = 4_000;
 // of the doubt.
 async function posterLoads(url, fetchOptions = {}) {
   if (fetchOptions.checkPosters === false) return true;
-  if (typeof url !== "string" || !url.startsWith("https://btttr.cc/")) return true;
+  if (typeof url !== "string" || !CHECKED_POSTER_HOSTS.some((host) => url.startsWith(host))) return true;
   const fetchImpl = fetchOptions.fetchImpl ?? globalThis.fetch;
   try {
     const response = await fetchImpl(url, {
@@ -107,7 +108,13 @@ async function topTodayMetas(source, fetchOptions) {
     .filter((meta, index) => meta && loads[index])
     .map((meta, index) => (
       typeof meta.poster === "string"
-        ? { ...meta, poster: meta.poster.replace(/([?&]r=)\d+/, `$1${index + 1}`) }
+        ? {
+          ...meta,
+          // Close up the rank numbers and switch on the streaming-service logos.
+          poster: meta.poster
+            .replace(/([?&]rank=)\d+/, `$1${index + 1}`)
+            .replace(/([?&]logos=)0/, "$11"),
+        }
         : meta
     ));
 }
