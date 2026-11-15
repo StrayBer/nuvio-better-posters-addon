@@ -80,3 +80,16 @@ test("Top Today rows can be switched off", () => {
   );
   assert.throws(() => createConfig(["https://catalog.example/manifest.json"], undefined, "no"), /true or false/);
 });
+
+test("orders known Nuvio Catalog rows and keeps unknown rows in place", () => {
+  const config = createConfig(["https://catalog.example/manifest.json"], undefined, false);
+  const ids = ["movies-by-year", "custom-b", "netflix-series", "custom-a", "trending-series", "trending-movies"];
+  const manifest = buildProxyManifest(config, [{
+    manifestUrl: config.upstreams[0],
+    manifest: { id: "x", name: "X", version: "1.0.0", types: ["movie"], resources: ["catalog"], catalogs: ids.map((id) => ({ type: "movie", id, name: id })) },
+  }], "https://proxy.example");
+  assert.deepEqual(
+    manifest.catalogs.map((catalog) => catalog.name),
+    ["trending-movies", "trending-series", "netflix-series", "custom-b", "custom-a", "movies-by-year"],
+  );
+});

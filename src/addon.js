@@ -18,6 +18,44 @@ const TOP_TODAY_CATALOGS = [
   { type: "movie", id: "bp_top_movies_today", name: "Top Movies Today", source: "https://btttr.cc/catalog/movie/tmdb-today.json" },
 ];
 
+// Preferred home-screen order for the Nuvio Catalog's rows: what is hot and
+// new first, then the streaming services, then curated shelves, and the
+// "pick a year / language" browsing rows last. Rows not listed here (and
+// other addons' rows) keep their original order after these.
+const PREFERRED_ROW_ORDER = [
+  "trending-movies",
+  "trending-series",
+  "popular-movies",
+  "popular-series",
+  "new-and-upcoming-movies",
+  "new-and-returning-series",
+  "airing-today-series",
+  "netflix-movies",
+  "netflix-series",
+  "disney-plus-movies",
+  "disney-plus-series",
+  "prime-video-movies",
+  "prime-video-series",
+  "critically-acclaimed-movies",
+  "critically-acclaimed-series",
+  "limited-series",
+  "family-movies",
+  "family-series",
+  "documentaries",
+  "documentary-series",
+  "international-cinema",
+  "international-series",
+  "independent-and-festival-picks",
+];
+const BROWSE_ROWS_LAST = ["movies-by-year", "series-by-year", "movies-by-language", "series-by-language"];
+
+function rowRank(catalogId) {
+  const preferred = PREFERRED_ROW_ORDER.indexOf(catalogId);
+  if (preferred >= 0) return preferred;
+  const last = BROWSE_ROWS_LAST.indexOf(catalogId);
+  return last >= 0 ? 2_000 + last : 1_000;
+}
+
 function addonName(upstreams) {
   if (upstreams.length !== 1) return "BetterPosters for Nuvio";
   const name = String(upstreams[0].manifest.name ?? "").replace(/\s+addon$/i, "").trim();
@@ -59,8 +97,11 @@ function mergedResource(upstreams, name) {
 
 export function buildProxyManifest(config, upstreams, publicBaseUrl) {
   const wrappedCatalogs = upstreams.flatMap(({ manifest }, upstreamIndex) =>
-    (Array.isArray(manifest.catalogs) ? manifest.catalogs : []).flatMap((catalog) => {
-      if (!catalog || typeof catalog.id !== "string" || typeof catalog.type !== "string") return [];
+    (Array.isArray(manifest.catalogs) ? manifest.catalogs : [])
+      .filter((catalog) => catalog && typeof catalog.id === "string" && typeof catalog.type === "string")
+      .map((catalog, index) => ({ catalog, index }))
+      .sort((a, b) => rowRank(a.catalog.id) - rowRank(b.catalog.id) || a.index - b.index)
+      .flatMap(({ catalog }) => {
       return [{
         ...catalog,
         id: encodeCatalogId(upstreamIndex, catalog.id),
