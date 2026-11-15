@@ -55,6 +55,9 @@
     </div>
     <label class="field" for="upstreams">Addon manifest URLs (one per line)</label>
     <textarea id="upstreams" spellcheck="false" placeholder="https://catalog.nuvio.tv/manifest.json"></textarea>
+    <div class="checks" style="margin-top:18px">
+      <label><input type="checkbox" id="optTopToday"><span>Top Today rows first<span>Adds “Top Shows Today” and “Top Movies Today” (ranked 1 to 25) above the catalog's own rows</span></span></label>
+    </div>
     <p class="muted small">For a different language or country in the Nuvio Catalog, set it up on <a href="https://catalog.nuvio.tv/" target="_blank" rel="noopener" style="color:#b9ddff">catalog.nuvio.tv</a>, press “Copy configured link” there and paste that link here.</p>
   </section>
 
@@ -134,6 +137,9 @@
     age: document.querySelector("#optAge"),
   };
   const source = document.querySelector("#optSource");
+  const topToday = document.querySelector("#optTopToday");
+  topToday.checked = Array.isArray(initial) || initial.topToday !== false;
+  topToday.addEventListener("change", () => { result.style.display = "none"; });
 
   textarea.value = initialUpstreams.length ? initialUpstreams.join("\n") : "https://catalog.nuvio.tv/manifest.json";
   for (const key of Object.keys(checks)) checks[key].checked = initialPoster[key];
@@ -185,7 +191,7 @@
       const response = await fetch("/api/config", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ upstreams, poster: posterOptions() }),
+        body: JSON.stringify({ upstreams, poster: posterOptions(), topToday: topToday.checked }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Could not create the addon URL.");

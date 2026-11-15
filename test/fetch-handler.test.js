@@ -66,7 +66,7 @@ test("web-standard handler preserves existing configured URL routes", async () =
     const manifest = await manifestResponse.json();
     const configuredBase = generated.manifestUrl.replace(/\/manifest\.json$/, "");
     const catalogResponse = await handler(new Request(
-      `${configuredBase}/catalog/movie/${manifest.catalogs[0].id}.json`,
+      `${configuredBase}/catalog/movie/${manifest.catalogs.at(-1).id}.json`,
     ));
     assert.equal(catalogResponse.status, 200);
     const catalog = await catalogResponse.json();

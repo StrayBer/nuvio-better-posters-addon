@@ -78,8 +78,8 @@ async function readJsonBody(request) {
   }
 }
 
-function renderConfigure(upstreams = [], poster = null) {
-  const safeInitialState = JSON.stringify({ upstreams, poster }).replace(/</g, "\\u003c");
+function renderConfigure(upstreams = [], poster = null, topToday = true) {
+  const safeInitialState = JSON.stringify({ upstreams, poster, topToday }).replace(/</g, "\\u003c");
   return CONFIGURE_TEMPLATE.replace("__INITIAL_UPSTREAMS_JSON__", safeInitialState);
 }
 
@@ -173,7 +173,7 @@ export function createBetterPostersServer(options = {}) {
         } catch (error) {
           throw new HttpError(400, error.message);
         }
-        send(response, 200, renderConfigure(config.upstreams, config.poster ?? null), "text/html; charset=utf-8");
+        send(response, 200, renderConfigure(config.upstreams, config.poster ?? null, config.topToday !== false), "text/html; charset=utf-8");
         return;
       }
       if (request.method === "GET" && segments.length === 1 && segments[0] === "health") {
@@ -186,7 +186,7 @@ export function createBetterPostersServer(options = {}) {
       }
       if (request.method === "POST" && segments.join("/") === "api/config") {
         const body = await readJsonBody(request);
-        const config = createConfig(body?.upstreams, body?.poster);
+        const config = createConfig(body?.upstreams, body?.poster, body?.topToday);
         const { upstreams } = await prepareAddon(config, baseUrl, fetchOptions);
         const token = encodeConfig(config);
         const manifestUrl = `${baseUrl}/${token}/manifest.json`;

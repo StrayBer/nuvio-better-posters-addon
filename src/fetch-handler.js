@@ -78,8 +78,8 @@ async function readJsonBody(request) {
   }
 }
 
-function renderConfigure(template, upstreams = [], poster = null) {
-  const safeInitialState = JSON.stringify({ upstreams, poster }).replace(/</g, "\\u003c");
+function renderConfigure(template, upstreams = [], poster = null, topToday = true) {
+  const safeInitialState = JSON.stringify({ upstreams, poster, topToday }).replace(/</g, "\\u003c");
   return template.replace("__INITIAL_UPSTREAMS_JSON__", safeInitialState);
 }
 
@@ -174,7 +174,7 @@ export function createBetterPostersFetchHandler(options = {}) {
         }
         return send(
           200,
-          renderConfigure(configureTemplate, config.upstreams, config.poster ?? null),
+          renderConfigure(configureTemplate, config.upstreams, config.poster ?? null, config.topToday !== false),
           "text/html; charset=utf-8",
         );
       }
@@ -186,7 +186,7 @@ export function createBetterPostersFetchHandler(options = {}) {
       }
       if (request.method === "POST" && segments.join("/") === "api/config") {
         const body = await readJsonBody(request);
-        const config = createConfig(body?.upstreams, body?.poster);
+        const config = createConfig(body?.upstreams, body?.poster, body?.topToday);
         const { upstreams } = await prepareAddon(config, baseUrl, fetchOptions);
         const token = encodeConfig(config);
         const manifestUrl = `${baseUrl}/${token}/manifest.json`;

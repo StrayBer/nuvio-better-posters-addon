@@ -37,7 +37,8 @@ test("builds a Nuvio-compatible aggregate manifest", () => {
   ];
 
   const manifest = buildProxyManifest(config, upstreams, "https://proxy.example");
-  assert.equal(manifest.catalogs.length, 1);
+  assert.deepEqual(manifest.catalogs.map((catalog) => catalog.name), ["Top Shows Today", "Top Movies Today", "Popular"]);
+  manifest.catalogs.splice(0, 2);
   assert.equal(manifest.catalogs[0].name, "Popular");
   assert.equal(manifest.name, "BetterPosters for Nuvio");
   assert.deepEqual(decodeCatalogId(manifest.catalogs[0].id), { upstreamIndex: 0, catalogId: "popular" });
@@ -65,4 +66,17 @@ test("corrects misspelled search words from suggested titles", () => {
   assert.equal(correctedSearchValue("batmn+begins", names), "batman%20begins");
   assert.equal(correctedSearchValue("superman", names), null);
   assert.equal(correctedSearchValue("zzqqxxyy", names), null);
+});
+
+test("Top Today rows can be switched off", () => {
+  const upstream = (config) => [{
+    manifestUrl: config.upstreams[0],
+    manifest: { id: "x", name: "X", version: "1.0.0", types: ["movie"], resources: ["catalog"], catalogs: [{ type: "movie", id: "popular", name: "Popular" }] },
+  }];
+  const off = createConfig(["https://catalog.example/manifest.json"], undefined, false);
+  assert.deepEqual(
+    buildProxyManifest(off, upstream(off), "https://proxy.example").catalogs.map((catalog) => catalog.name),
+    ["Popular"],
+  );
+  assert.throws(() => createConfig(["https://catalog.example/manifest.json"], undefined, "no"), /true or false/);
 });

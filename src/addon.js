@@ -10,6 +10,14 @@ import {
 
 const PROXIED_RESOURCES = ["meta", "stream", "subtitles"];
 
+// Ranked "today" lists from BetterPosters, shown as the first rows of the
+// addon. Their posters already carry the rank number and tags, so they are
+// passed through untouched. The lists are a fixed top 25 with no paging.
+const TOP_TODAY_CATALOGS = [
+  { type: "series", id: "bp_top_shows_today", name: "Top Shows Today", source: "https://btttr.cc/catalog/series/tmdb-today-shows.json" },
+  { type: "movie", id: "bp_top_movies_today", name: "Top Movies Today", source: "https://btttr.cc/catalog/movie/tmdb-today.json" },
+];
+
 function addonName(upstreams) {
   if (upstreams.length !== 1) return "BetterPosters for Nuvio";
   const name = String(upstreams[0].manifest.name ?? "").replace(/\s+addon$/i, "").trim();
@@ -50,7 +58,7 @@ function mergedResource(upstreams, name) {
 }
 
 export function buildProxyManifest(config, upstreams, publicBaseUrl) {
-  const catalogs = upstreams.flatMap(({ manifest }, upstreamIndex) =>
+  const wrappedCatalogs = upstreams.flatMap(({ manifest }, upstreamIndex) =>
     (Array.isArray(manifest.catalogs) ? manifest.catalogs : []).flatMap((catalog) => {
       if (!catalog || typeof catalog.id !== "string" || typeof catalog.type !== "string") return [];
       return [{
@@ -60,6 +68,10 @@ export function buildProxyManifest(config, upstreams, publicBaseUrl) {
       }];
     }),
   );
+  const catalogs = [
+    ...(config.topToday === false ? [] : TOP_TODAY_CATALOGS.map(({ type, id, name }) => ({ type, id, name }))),
+    ...wrappedCatalogs,
+  ];
   const types = [...new Set([
     ...catalogs.map((catalog) => catalog.type),
     ...upstreams.flatMap(({ manifest }) => Array.isArray(manifest.types) ? manifest.types : []),
@@ -97,6 +109,13 @@ export async function proxyCatalog({
   fetchOptions,
   posterOptions,
 }) {
+  const topToday = TOP_TODAY_CATALOGS.find((catalog) => catalog.id === encodedCatalogId && catalog.type === type);
+  if (topToday) {
+    if (rawExtraSegment != null) return { metas: [] };
+    const payload = await fetchJson(topToday.source, fetchOptions);
+    return { metas: Array.isArray(payload?.metas) ? payload.metas : [] };
+  }
+
   const { upstreamIndex, catalogId } = decodeCatalogId(encodedCatalogId);
   const upstream = upstreams[upstreamIndex];
   if (!upstream) throw new RangeError("Catalog refers to an unavailable upstream addon.");
