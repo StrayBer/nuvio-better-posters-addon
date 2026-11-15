@@ -34,19 +34,34 @@ const handleRequest = createBetterPostersFetchHandler({
   fetchOptions: { fetchImpl: cachedUpstreamFetch },
 });
 
+// Bump this when a deploy changes what catalog or metadata answers contain,
+// so copies saved at the edge by the previous version are not served.
+const EDGE_CACHE_VERSION = "3";
+const EDGE_CACHE_SECONDS = 300;
+
 export default {
-  // Catalog and metadata answers are kept at the edge for as long as their
-  // Cache-Control allows, so repeat visits skip the upstream and poster checks.
+  // Catalog and metadata answers are kept at the edge for five minutes, so
+  // repeat visits skip the upstream requests and poster checks.
   async fetch(request, env, ctx) {
     if (request.method !== "GET") return handleRequest(request, env);
-    const pathname = new URL(request.url).pathname;
-    const cacheable = pathname.includes("/catalog/") || pathname.includes("/meta/");
+    const url = new URL(request.url);
+    const cacheable = url.pathname.includes("/catalog/") || url.pathname.includes("/meta/");
     if (!cacheable) return handleRequest(request, env);
+
+    url.searchParams.set("__edge", EDGE_CACHE_VERSION);
+    const cacheKey = new Request(url.toString(), { method: "GET" });
     const cache = caches.default;
-    const cached = await cache.match(request);
+    const cached = await cache.match(cacheKey);
     if (cached) return cached;
+
     const response = await handleRequest(request, env);
-    if (response.status === 200) ctx.waitUntil(cache.put(request, response.clone()));
+    if (response.status === 200) {
+      // No stale-while-revalidate on the saved copy: it would keep an old
+      // answer alive long after the five minutes are up.
+      const copy = new Response(response.clone().body, response);
+      copy.headers.set("cache-control", `public, max-age=${EDGE_CACHE_SECONDS}`);
+      ctx.waitUntil(cache.put(cacheKey, copy));
+    }
     return response;
   },
 };
