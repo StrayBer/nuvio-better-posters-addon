@@ -36,7 +36,7 @@ const handleRequest = createBetterPostersFetchHandler({
 
 // Bump this when a deploy changes what catalog or metadata answers contain,
 // so copies saved at the edge by the previous version are not served.
-const EDGE_CACHE_VERSION = "4";
+const EDGE_CACHE_VERSION = "5";
 const EDGE_CACHE_SECONDS = 300;
 
 export default {

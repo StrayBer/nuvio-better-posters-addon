@@ -142,7 +142,11 @@ async function trendingFill(catalog, taken, wanted, fetchOptions) {
   return filled.filter(Boolean).slice(0, wanted);
 }
 
-async function topTodayMetas(catalog, fetchOptions) {
+async function topTodayMetas(catalog, callerFetchOptions) {
+  // Every address used here is fixed in this file, so the private-network
+  // check (two DNS requests per call) is skipped. That keeps the row inside
+  // the 50 outgoing requests a Cloudflare Worker may make per call.
+  const fetchOptions = { ...callerFetchOptions, validateUrl: async () => {} };
   const payload = await fetchJson(catalog.source, fetchOptions);
   const ranked = (Array.isArray(payload?.metas) ? payload.metas : [])
     .filter((meta) => meta && typeof meta.poster === "string")
