@@ -35,7 +35,7 @@ Do not enter private or secret addon URLs into the public configurator. Its gene
 
 - Replaces poster URLs in wrapped catalog and metadata responses with [BetterPosters](https://btttr.cc/) artwork, for titles with an IMDb ID and for titles that only have a TMDB ID.
 - Titles BetterPosters has no artwork for keep their normal poster.
-- Puts two ranked rows first, “Top Shows Today” and “Top Movies Today” (top 10 from [TMDB Top Today](https://toptoday.llamayu.com/)). They can be switched off in the configurator.
+- Puts two ranked rows first, “Top Shows Today” and “Top Movies Today” (top 25: ranks 1 to 10 from [TMDB Top Today](https://toptoday.llamayu.com/), the rest from the Nuvio Catalog's trending list). They can be switched off in the configurator.
 - Makes search forgive typos: when the wrapped catalog finds nothing (for example `suerman`), Cinemeta's search answers instead.
 - Leaves streams and subtitles unchanged.
 

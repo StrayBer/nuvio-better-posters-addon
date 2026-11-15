@@ -12,10 +12,10 @@ const PROXIED_RESOURCES = ["meta", "stream", "subtitles"];
 
 // Ranked "today" lists from the TMDB Top Today addon, shown as the first rows of the
 // addon. Their posters already carry the rank number and tags, so they are
-// passed through untouched. The lists are a fixed top 10 with no paging.
+// passed through untouched. The rows are a fixed top 25 with no paging.
 const TOP_TODAY_CATALOGS = [
-  { type: "movie", id: "bp_top_movies_today", name: "Top Movies Today", source: "https://toptoday.llamayu.com/catalog/movie/top_movies_today.json" },
-  { type: "series", id: "bp_top_shows_today", name: "Top Shows Today", source: "https://toptoday.llamayu.com/catalog/series/top_shows_today.json" },
+  { type: "movie", id: "bp_top_movies_today", name: "Top Movies Today", source: "https://toptoday.llamayu.com/catalog/movie/top_movies_today.json", trending: "https://catalog.nuvio.tv/catalog/movie/trending-movies" },
+  { type: "series", id: "bp_top_shows_today", name: "Top Shows Today", source: "https://toptoday.llamayu.com/catalog/series/top_shows_today.json", trending: "https://catalog.nuvio.tv/catalog/series/trending-series" },
 ];
 
 // Preferred home-screen order for the Nuvio Catalog's rows: what is hot and
@@ -75,6 +75,9 @@ async function posterLoads(url, fetchOptions = {}) {
       redirect: "manual",
       signal: AbortSignal.timeout(POSTER_CHECK_TIMEOUT_MS),
     });
+    // A redirect or "not found" means there is no poster. A busy or failing
+    // image server (429, 5xx) says nothing about the poster itself.
+    if (response.status === 429 || response.status >= 500) return true;
     return response.status === 200;
   } catch {
     return true;
@@ -97,26 +100,62 @@ async function rewriteCatalogChecked(payload, posterOptions, fetchOptions) {
   return keepWorkingPosters(payload, rewriteCatalogResponse(payload, posterOptions), fetchOptions);
 }
 
-// Top Today items come with a BetterPosters poster only. Items whose poster
-// would not load have no data anywhere else either, so they are left out and
-// the rank numbers on the remaining posters are closed up.
-async function topTodayMetas(source, fetchOptions) {
-  const payload = await fetchJson(source, fetchOptions);
-  const metas = Array.isArray(payload?.metas) ? payload.metas : [];
-  const loads = await Promise.all(metas.map((meta) => posterLoads(meta?.poster, fetchOptions)));
-  return metas
-    .filter((meta, index) => meta && loads[index])
-    .map((meta, index) => (
-      typeof meta.poster === "string"
-        ? {
-          ...meta,
-          // Close up the rank numbers and switch on the streaming-service logos.
-          poster: meta.poster
-            .replace(/([?&]rank=)\d+/, `$1${index + 1}`)
-            .replace(/([?&]logos=)0/, "$11"),
-        }
-        : meta
-    ));
+const TOP_TODAY_SIZE = 25;
+const TOP_TODAY_SPARE_CANDIDATES = 3;
+const TMDB_ID_LOOKUP = "https://cinemeta-live.strem.io/meta";
+
+// The TMDB Top Today list stops at rank 10. Ranks 11 and up are filled from
+// the Nuvio Catalog's trending list (minus titles already ranked), with a
+// poster in the same ranked style. That poster needs the title's TMDB number,
+// which Cinemeta knows for an IMDb ID.
+async function trendingFill(catalog, taken, wanted, fetchOptions) {
+  const pages = await Promise.all(["", "/skip=20"].map(async (extra) => {
+    try {
+      const payload = await fetchJson(`${catalog.trending}${extra}.json`, fetchOptions);
+      return Array.isArray(payload?.metas) ? payload.metas : [];
+    } catch {
+      return [];
+    }
+  }));
+  const seen = new Set(taken);
+  const candidates = [];
+  for (const meta of pages.flat()) {
+    if (typeof meta?.id !== "string" || !meta.id.startsWith("tt") || seen.has(meta.id)) continue;
+    seen.add(meta.id);
+    candidates.push(meta);
+    if (candidates.length >= wanted + TOP_TODAY_SPARE_CANDIDATES) break;
+  }
+
+  const posterBase = new URL(catalog.source).origin;
+  const filled = await Promise.all(candidates.map(async (meta) => {
+    try {
+      const lookup = await fetchJson(`${TMDB_ID_LOOKUP}/${catalog.type}/${meta.id}.json`, fetchOptions);
+      const tmdbId = Number(lookup?.meta?.moviedb_id);
+      if (!Number.isSafeInteger(tmdbId) || tmdbId <= 0) return null;
+      const poster = `${posterBase}/poster/${tmdbId}.jpg?type=${catalog.type}&rank=11&lang=en&logos=1`;
+      return (await posterLoads(poster, fetchOptions)) ? { ...meta, poster, posterShape: "poster" } : null;
+    } catch {
+      return null;
+    }
+  }));
+  return filled.filter(Boolean).slice(0, wanted);
+}
+
+async function topTodayMetas(catalog, fetchOptions) {
+  const payload = await fetchJson(catalog.source, fetchOptions);
+  const ranked = (Array.isArray(payload?.metas) ? payload.metas : [])
+    .filter((meta) => meta && typeof meta.poster === "string")
+    .slice(0, TOP_TODAY_SIZE);
+  const extra = ranked.length > 0 && ranked.length < TOP_TODAY_SIZE
+    ? await trendingFill(catalog, ranked.map((meta) => meta.id), TOP_TODAY_SIZE - ranked.length, fetchOptions)
+    : [];
+  return [...ranked, ...extra].map((meta, index) => ({
+    ...meta,
+    // Number the posters 1..N and switch on the streaming-service logos.
+    poster: meta.poster
+      .replace(/([?&]rank=)\d+/, `$1${index + 1}`)
+      .replace(/([?&]logos=)0/, "$11"),
+  }));
 }
 
 function addonName(upstreams) {
@@ -216,7 +255,7 @@ export async function proxyCatalog({
   const topToday = TOP_TODAY_CATALOGS.find((catalog) => catalog.id === encodedCatalogId && catalog.type === type);
   if (topToday) {
     if (rawExtraSegment != null) return { metas: [] };
-    return { metas: await topTodayMetas(topToday.source, fetchOptions) };
+    return { metas: await topTodayMetas(topToday, fetchOptions) };
   }
 
   const { upstreamIndex, catalogId } = decodeCatalogId(encodedCatalogId);
