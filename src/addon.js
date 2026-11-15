@@ -101,7 +101,6 @@ async function rewriteCatalogChecked(payload, posterOptions, fetchOptions) {
 }
 
 const TOP_TODAY_SIZE = 25;
-const TOP_TODAY_SPARE_CANDIDATES = 3;
 const TMDB_ID_LOOKUP = "https://cinemeta-live.strem.io/meta";
 
 // The TMDB Top Today list stops at rank 10. Ranks 11 and up are filled from
@@ -123,7 +122,7 @@ async function trendingFill(catalog, taken, wanted, fetchOptions) {
     if (typeof meta?.id !== "string" || !meta.id.startsWith("tt") || seen.has(meta.id)) continue;
     seen.add(meta.id);
     candidates.push(meta);
-    if (candidates.length >= wanted + TOP_TODAY_SPARE_CANDIDATES) break;
+    if (candidates.length >= wanted) break;
   }
 
   const posterBase = new URL(catalog.source).origin;
@@ -132,8 +131,10 @@ async function trendingFill(catalog, taken, wanted, fetchOptions) {
       const lookup = await fetchJson(`${TMDB_ID_LOOKUP}/${catalog.type}/${meta.id}.json`, fetchOptions);
       const tmdbId = Number(lookup?.meta?.moviedb_id);
       if (!Number.isSafeInteger(tmdbId) || tmdbId <= 0) return null;
+      // Not checked with a HEAD request: a Cloudflare Worker may only make 50
+      // outgoing requests per call and the lookups above already use most.
       const poster = `${posterBase}/poster/${tmdbId}.jpg?type=${catalog.type}&rank=11&lang=en&logos=1`;
-      return (await posterLoads(poster, fetchOptions)) ? { ...meta, poster, posterShape: "poster" } : null;
+      return { ...meta, poster, posterShape: "poster" };
     } catch {
       return null;
     }
