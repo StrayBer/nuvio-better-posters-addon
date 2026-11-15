@@ -16,33 +16,73 @@
     section { border: 1px solid #24272e; border-radius: 18px; padding: 22px; background: #101216; margin-top: 18px; }
     h2 { margin: 0 0 9px; font-size: 17px; }
     p { line-height: 1.55; }
-    label { display: block; margin: 22px 0 9px; font-weight: 700; }
-    textarea, input { width: 100%; border: 1px solid #343944; border-radius: 12px; background: #090a0d; color: #fff; padding: 14px; font: 14px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
-    textarea { min-height: 168px; resize: vertical; }
-    textarea:focus, input:focus { outline: 2px solid #4b9fff; outline-offset: 1px; }
+    label.field { display: block; margin: 22px 0 9px; font-weight: 700; }
+    textarea, input[type="text"], select { width: 100%; border: 1px solid #343944; border-radius: 12px; background: #090a0d; color: #fff; padding: 14px; font: 14px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    textarea { min-height: 96px; resize: vertical; }
+    textarea:focus, input:focus, select:focus { outline: 2px solid #4b9fff; outline-offset: 1px; }
     .buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
     button, a.button { border: 0; border-radius: 11px; padding: 12px 16px; font: inherit; font-weight: 750; cursor: pointer; text-decoration: none; color: #fff; background: #2c313a; }
     button.primary, a.primary { background: linear-gradient(135deg, #238cf1, #7758f7); }
+    button.preset[aria-pressed="true"] { outline: 2px solid #4b9fff; background: #17263a; }
     button:disabled { opacity: .55; cursor: wait; }
     #result, #error { display: none; }
     #error { border-color: #70343b; background: #1d1013; color: #ffb8c0; }
     ol { padding-left: 22px; color: #cbd1da; }
     code { color: #b9ddff; }
     .small { font-size: 13px; }
+    .style { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 22px; align-items: start; margin-top: 14px; }
+    .style img { width: 150px; aspect-ratio: 2 / 3; border-radius: 10px; background: #1a1d23; object-fit: cover; display: block; }
+    .checks { display: grid; gap: 12px; }
+    .checks label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+    .checks input { margin-top: 3px; width: 17px; height: 17px; flex: none; accent-color: #4b9fff; }
+    .checks span span { display: block; color: #9aa3b2; font-size: 13px; }
+    @media (max-width: 520px) { .style { grid-template-columns: 1fr; } .style img { margin: 0 auto; } }
   </style>
 </head>
 <body>
 <main>
   <header>
     <img src="/logo.svg" alt="">
-    <div><h1>BetterPosters</h1><p>Poster-default artwork for Nuvio on iOS and TV</p></div>
+    <div><h1>BetterPosters</h1><p>Better poster artwork for Nuvio catalogs</p></div>
   </header>
 
   <section>
-    <h2>Wrap your Nuvio addons</h2>
-    <p class="muted">Enter one upstream addon manifest URL per line. Catalogs and metadata are passed through with IMDb-backed poster URLs replaced by <code>btttr.cc</code>. Streams and subtitles are aggregated unchanged.</p>
-    <label for="upstreams">Addon manifest URLs</label>
-    <textarea id="upstreams" spellcheck="false" placeholder="https://v3-cinemeta.strem.io/manifest.json"></textarea>
+    <h2>1. Pick the catalog to wrap</h2>
+    <p class="muted">The catalog is passed through unchanged, except that its posters are replaced by <code>btttr.cc</code> artwork.</p>
+    <div class="buttons">
+      <button type="button" class="preset" data-preset="https://catalog.nuvio.tv/manifest.json">Nuvio Catalog</button>
+      <button type="button" class="preset" data-preset="https://v3-cinemeta.strem.io/manifest.json">Cinemeta</button>
+    </div>
+    <label class="field" for="upstreams">Addon manifest URLs (one per line)</label>
+    <textarea id="upstreams" spellcheck="false" placeholder="https://catalog.nuvio.tv/manifest.json"></textarea>
+    <p class="muted small">For a different language or country in the Nuvio Catalog, set it up on <a href="https://catalog.nuvio.tv/" target="_blank" rel="noopener" style="color:#b9ddff">catalog.nuvio.tv</a>, press “Copy configured link” there and paste that link here.</p>
+  </section>
+
+  <section>
+    <h2>2. Poster style</h2>
+    <div class="style">
+      <div class="checks">
+        <label><input type="checkbox" id="optRating"><span>Rating<span>Star rating at the bottom of the poster</span></span></label>
+        <label><input type="checkbox" id="optGenre"><span>Genre<span>Genre label at the bottom</span></span></label>
+        <label><input type="checkbox" id="optTrend"><span>Trend tags<span>Trending, New and IMDb rank badges</span></span></label>
+        <label><input type="checkbox" id="optQuality"><span>Quality tags<span>4K, Dolby Vision and Atmos badges</span></span></label>
+        <label><input type="checkbox" id="optAge"><span>Age rating<span>PG-13, TV-MA, R</span></span></label>
+        <div>
+          <label class="field" for="optSource" style="margin-top:6px">Rating source</label>
+          <select id="optSource">
+            <option value="avg">Average</option>
+            <option value="IM">IMDb (/10)</option>
+            <option value="TM">TMDB (/10)</option>
+            <option value="RT">Rotten Tomatoes (%)</option>
+            <option value="MC">Metacritic (/100)</option>
+            <option value="TR">Trakt (/10)</option>
+            <option value="LB">Letterboxd (/5)</option>
+            <option value="RE">Roger Ebert (/4)</option>
+          </select>
+        </div>
+      </div>
+      <img id="preview" alt="Poster preview">
+    </div>
     <div class="buttons"><button id="generate" class="primary">Generate addon URL</button></div>
   </section>
 
@@ -51,34 +91,89 @@
   <section id="result">
     <h2>Your addon is ready</h2>
     <p id="addonNames" class="muted"></p>
-    <label for="manifestUrl">Manifest URL</label>
-    <input id="manifestUrl" readonly>
+    <label class="field" for="manifestUrl">Manifest URL</label>
+    <input type="text" id="manifestUrl" readonly>
     <div class="buttons">
-      <button id="copy">Copy for Nuvio</button>
-      <a id="install" class="button primary" href="#">Install in Stremio</a>
+      <a id="installNuvio" class="button primary" href="#">Install to Nuvio</a>
+      <button id="copy">Copy link</button>
+      <a id="install" class="button" href="#">Install in Stremio</a>
     </div>
   </section>
 
   <section>
     <h2>Install in Nuvio</h2>
     <ol>
-      <li>Generate and copy the manifest URL above.</li>
-      <li>In Nuvio on iOS or TV, open <strong>Settings → Addons</strong> and add that URL.</li>
-      <li>Disable the original wrapped catalog addons to avoid duplicate catalog rows. If a stream addon was not included above, leave it installed normally.</li>
+      <li>Generate the manifest URL above, then press <strong>Install to Nuvio</strong> or copy the link.</li>
+      <li>If you copied it: in Nuvio open <strong>Settings → Addons</strong> and add that URL.</li>
+      <li>Disable the original catalog addon you wrapped, so its rows do not show twice.</li>
     </ol>
-    <p class="muted small">Only media with an IMDb ID can use this BetterPosters URL format. Configuration tokens contain the addon URLs in reversible form; do not include URLs you consider secret on a shared deployment.</p>
+    <p class="muted small">Titles that BetterPosters has no artwork for keep their normal poster. The link contains the addon URLs in readable form, so do not wrap addon URLs you consider secret.</p>
   </section>
 </main>
 <script>
-  const initialUpstreams = __INITIAL_UPSTREAMS_JSON__;
+  const initial = __INITIAL_UPSTREAMS_JSON__;
+  const initialUpstreams = Array.isArray(initial) ? initial : (initial.upstreams || []);
+  const defaults = { genre: true, rating: true, quality: false, age: false, trend: true, ratingSource: "avg" };
+  const initialPoster = Object.assign({}, defaults, Array.isArray(initial) ? null : initial.poster);
+
   const textarea = document.querySelector("#upstreams");
   const generate = document.querySelector("#generate");
   const result = document.querySelector("#result");
   const errorBox = document.querySelector("#error");
   const manifestInput = document.querySelector("#manifestUrl");
   const install = document.querySelector("#install");
+  const installNuvio = document.querySelector("#installNuvio");
   const addonNames = document.querySelector("#addonNames");
-  textarea.value = initialUpstreams.length ? initialUpstreams.join("\n") : "https://v3-cinemeta.strem.io/manifest.json";
+  const preview = document.querySelector("#preview");
+  const presets = [...document.querySelectorAll(".preset")];
+  const checks = {
+    rating: document.querySelector("#optRating"),
+    genre: document.querySelector("#optGenre"),
+    trend: document.querySelector("#optTrend"),
+    quality: document.querySelector("#optQuality"),
+    age: document.querySelector("#optAge"),
+  };
+  const source = document.querySelector("#optSource");
+
+  textarea.value = initialUpstreams.length ? initialUpstreams.join("\n") : "https://catalog.nuvio.tv/manifest.json";
+  for (const key of Object.keys(checks)) checks[key].checked = initialPoster[key];
+  source.value = initialPoster.ratingSource;
+
+  function posterOptions() {
+    const options = { ratingSource: source.value };
+    for (const key of Object.keys(checks)) options[key] = checks[key].checked;
+    return options;
+  }
+
+  // Mirrors src/posters.js so the preview shows exactly what the addon serves.
+  function previewUrl(options) {
+    let base = "poster";
+    if (options.genre && !options.rating) base = "poster-g";
+    else if (!options.genre && options.rating) base = "poster-r";
+    else if (!options.genre && !options.rating) base = "poster-n";
+    const suffix = (options.quality ? "q" : "") + (options.age ? "a" : "");
+    if (suffix) base += base.includes("-") ? suffix : "-" + suffix;
+    const params = [];
+    if (!options.trend) params.push("tag=none");
+    if (options.rating && options.ratingSource !== "avg") params.push("rs=" + options.ratingSource);
+    return "https://btttr.cc/" + base + "/imdb/poster-default/tt1375666.jpg" + (params.length ? "?" + params.join("&") : "");
+  }
+
+  function refresh() {
+    const options = posterOptions();
+    source.disabled = !options.rating;
+    preview.src = previewUrl(options);
+    const current = textarea.value.trim();
+    for (const button of presets) button.setAttribute("aria-pressed", String(button.dataset.preset === current));
+    result.style.display = "none";
+  }
+
+  for (const button of presets) {
+    button.addEventListener("click", () => { textarea.value = button.dataset.preset; refresh(); });
+  }
+  for (const input of [...Object.values(checks), source]) input.addEventListener("change", refresh);
+  textarea.addEventListener("input", refresh);
+  refresh();
 
   generate.addEventListener("click", async () => {
     errorBox.style.display = "none";
@@ -90,12 +185,13 @@
       const response = await fetch("/api/config", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ upstreams }),
+        body: JSON.stringify({ upstreams, poster: posterOptions() }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Could not create the addon URL.");
       manifestInput.value = payload.manifestUrl;
       install.href = payload.stremioUrl;
+      installNuvio.href = payload.manifestUrl.replace(/^https?:\/\//i, "nuvio://");
       addonNames.textContent = `Wrapped: ${payload.addons.map(addon => addon.name).join(", ")}`;
       result.style.display = "block";
       result.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -109,9 +205,15 @@
   });
 
   document.querySelector("#copy").addEventListener("click", async (event) => {
-    await navigator.clipboard.writeText(manifestInput.value);
-    event.currentTarget.textContent = "Copied";
-    setTimeout(() => { event.currentTarget.textContent = "Copy for Nuvio"; }, 1200);
+    const button = event.currentTarget;
+    try {
+      await navigator.clipboard.writeText(manifestInput.value);
+      button.textContent = "Copied";
+    } catch {
+      manifestInput.select();
+      button.textContent = "Select and copy the link";
+    }
+    setTimeout(() => { button.textContent = "Copy link"; }, 1500);
   });
 </script>
 </body>

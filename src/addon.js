@@ -10,6 +10,12 @@ import {
 
 const PROXIED_RESOURCES = ["meta", "stream", "subtitles"];
 
+function addonName(upstreams) {
+  if (upstreams.length !== 1) return "BetterPosters for Nuvio";
+  const name = String(upstreams[0].manifest.name ?? "").replace(/\s+addon$/i, "").trim();
+  return name ? `${name} - BetterPosters` : "BetterPosters for Nuvio";
+}
+
 export function encodeCatalogId(upstreamIndex, catalogId) {
   return `bp_${upstreamIndex}_${Buffer.from(catalogId, "utf8").toString("base64url")}`;
 }
@@ -70,8 +76,8 @@ export function buildProxyManifest(config, upstreams, publicBaseUrl) {
   return {
     id: `cc.btttr.nuvio.proxy.${configFingerprint(config)}`,
     version: "1.0.0",
-    name: "BetterPosters Cinemeta Proxy",
-    description: `BetterPosters wrapper for ${upstreams.length} addon${upstreams.length === 1 ? "" : "s"}. IMDb-backed catalog and metadata posters use poster-default.`,
+    name: addonName(upstreams),
+    description: `BetterPosters wrapper for ${upstreams.length} addon${upstreams.length === 1 ? "" : "s"}. Catalog and metadata posters come from btttr.cc.`,
     logo: `${publicBaseUrl.replace(/\/$/, "")}/logo.svg`,
     resources,
     types,
@@ -89,6 +95,7 @@ export async function proxyCatalog({
   encodedCatalogId,
   rawExtraSegment,
   fetchOptions,
+  posterOptions,
 }) {
   const { upstreamIndex, catalogId } = decodeCatalogId(encodedCatalogId);
   const upstream = upstreams[upstreamIndex];
@@ -104,8 +111,55 @@ export async function proxyCatalog({
     catalogId,
     rawExtraSegment,
   );
-  const payload = await fetchJson(resourceUrl, fetchOptions);
-  return rewriteCatalogResponse(payload);
+  const searchValue = rawSearchValue(rawExtraSegment);
+  if (searchValue == null) {
+    return rewriteCatalogResponse(await fetchJson(resourceUrl, fetchOptions), posterOptions);
+  }
+
+  // Search: some catalogs (the TMDB-backed Nuvio Catalog, for one) return
+  // nothing for a misspelled title. Cinemeta's search forgives typos, so it
+  // answers whenever the wrapped catalog comes back empty or fails.
+  let payload = null;
+  let failure = null;
+  try {
+    payload = await fetchJson(resourceUrl, fetchOptions);
+  } catch (error) {
+    failure = error;
+  }
+  const hasResults = Array.isArray(payload?.metas) && payload.metas.length > 0;
+  if (!hasResults) {
+    const fallback = await searchFallback(upstream.manifestUrl, type, searchValue, fetchOptions);
+    if (fallback) return rewriteCatalogResponse(fallback, posterOptions);
+  }
+  if (failure) throw failure;
+  return rewriteCatalogResponse(payload, posterOptions);
+}
+
+const SEARCH_FALLBACK_HOST = "v3-cinemeta.strem.io";
+
+function rawSearchValue(rawExtraSegment) {
+  if (typeof rawExtraSegment !== "string") return null;
+  for (const part of rawExtraSegment.split("&")) {
+    if (part.startsWith("search=") && part.length > "search=".length) {
+      return part.slice("search=".length);
+    }
+  }
+  return null;
+}
+
+async function searchFallback(manifestUrl, type, searchValue, fetchOptions) {
+  if (type !== "movie" && type !== "series") return null;
+  if (new URL(manifestUrl).hostname === SEARCH_FALLBACK_HOST) return null;
+  try {
+    const payload = await fetchJson(
+      `https://${SEARCH_FALLBACK_HOST}/catalog/${type}/top/search=${searchValue}.json`,
+      fetchOptions,
+    );
+    if (!Array.isArray(payload?.metas) || payload.metas.length === 0) return null;
+    return { metas: payload.metas };
+  } catch {
+    return null;
+  }
 }
 
 function dedupe(items, keyFor) {
@@ -136,6 +190,7 @@ export async function proxyAggregateResource({
   id,
   rawExtraSegment,
   fetchOptions,
+  posterOptions,
 }) {
   if (!PROXIED_RESOURCES.includes(resource)) {
     throw new TypeError(`Unsupported proxy resource: ${resource}`);
@@ -168,7 +223,7 @@ export async function proxyAggregateResource({
 
   if (resource === "meta") {
     const response = successful.find((payload) => payload?.meta && typeof payload.meta === "object");
-    return response ? rewriteMetaResponse(response) : { meta: null };
+    return response ? rewriteMetaResponse(response, posterOptions) : { meta: null };
   }
   if (resource === "stream") {
     const streams = successful.flatMap((payload) => Array.isArray(payload?.streams) ? payload.streams : []);

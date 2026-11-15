@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isDefaultPosterOptions, normalizePosterOptions } from "./posters.js";
 
 export const MAX_UPSTREAMS = 20;
 const MAX_MANIFEST_URL_LENGTH = 4_096;
@@ -40,7 +41,7 @@ export function normalizeManifestUrl(input) {
   return url.toString();
 }
 
-export function createConfig(upstreams) {
+export function createConfig(upstreams, poster) {
   if (!Array.isArray(upstreams)) {
     throw new TypeError("upstreams must be an array of addon manifest URLs.");
   }
@@ -53,11 +54,14 @@ export function createConfig(upstreams) {
     throw new RangeError(`At most ${MAX_UPSTREAMS} upstream addons can be wrapped at once.`);
   }
 
-  return { version: 1, upstreams: normalized };
+  // Default poster options are left out so that links created before poster
+  // options existed keep the exact same token and addon ID.
+  if (isDefaultPosterOptions(poster)) return { version: 1, upstreams: normalized };
+  return { version: 1, upstreams: normalized, poster: normalizePosterOptions(poster) };
 }
 
 export function encodeConfig(config) {
-  const canonical = createConfig(config.upstreams);
+  const canonical = createConfig(config.upstreams, config.poster);
   return Buffer.from(JSON.stringify(canonical), "utf8").toString("base64url");
 }
 
@@ -76,7 +80,7 @@ export function decodeConfig(token) {
     throw new TypeError("Unsupported addon configuration version.");
   }
 
-  return createConfig(parsed.upstreams);
+  return createConfig(parsed.upstreams, parsed.poster);
 }
 
 export function configFingerprint(config) {

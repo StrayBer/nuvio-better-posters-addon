@@ -75,7 +75,7 @@ test("serves a generated manifest and rewrites catalog/meta posters end to end",
     const manifestResponse = await fetch(generated.manifestUrl);
     assert.equal(manifestResponse.status, 200);
     const manifest = await manifestResponse.json();
-    assert.equal(manifest.name, "BetterPosters for Nuvio");
+    assert.equal(manifest.name, "Test Upstream - BetterPosters");
     const catalogId = manifest.catalogs[0].id;
     const configuredBase = generated.manifestUrl.replace(/\/manifest\.json$/, "");
 

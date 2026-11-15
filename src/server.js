@@ -78,8 +78,8 @@ async function readJsonBody(request) {
   }
 }
 
-function renderConfigure(upstreams = []) {
-  const safeInitialState = JSON.stringify(upstreams).replace(/</g, "\\u003c");
+function renderConfigure(upstreams = [], poster = null) {
+  const safeInitialState = JSON.stringify({ upstreams, poster }).replace(/</g, "\\u003c");
   return CONFIGURE_TEMPLATE.replace("__INITIAL_UPSTREAMS_JSON__", safeInitialState);
 }
 
@@ -173,7 +173,7 @@ export function createBetterPostersServer(options = {}) {
         } catch (error) {
           throw new HttpError(400, error.message);
         }
-        send(response, 200, renderConfigure(config.upstreams), "text/html; charset=utf-8");
+        send(response, 200, renderConfigure(config.upstreams, config.poster ?? null), "text/html; charset=utf-8");
         return;
       }
       if (request.method === "GET" && segments.length === 1 && segments[0] === "health") {
@@ -186,7 +186,7 @@ export function createBetterPostersServer(options = {}) {
       }
       if (request.method === "POST" && segments.join("/") === "api/config") {
         const body = await readJsonBody(request);
-        const config = createConfig(body?.upstreams);
+        const config = createConfig(body?.upstreams, body?.poster);
         const { upstreams } = await prepareAddon(config, baseUrl, fetchOptions);
         const token = encodeConfig(config);
         const manifestUrl = `${baseUrl}/${token}/manifest.json`;
@@ -217,6 +217,7 @@ export function createBetterPostersServer(options = {}) {
           encodedCatalogId: route.id,
           rawExtraSegment: route.rawExtraSegment,
           fetchOptions,
+          posterOptions: config.poster,
         });
         sendJson(response, 200, payload, "public, max-age=120");
         return;
@@ -229,6 +230,7 @@ export function createBetterPostersServer(options = {}) {
         id: route.id,
         rawExtraSegment: route.rawExtraSegment,
         fetchOptions,
+        posterOptions: config.poster,
       });
       const cacheControl = route.resource === "stream"
         ? "public, max-age=15"

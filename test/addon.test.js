@@ -37,7 +37,8 @@ test("builds a Nuvio-compatible aggregate manifest", () => {
 
   const manifest = buildProxyManifest(config, upstreams, "https://proxy.example");
   assert.equal(manifest.catalogs.length, 1);
-  assert.match(manifest.catalogs[0].name, /BetterPosters \(One\)/);
+  assert.equal(manifest.catalogs[0].name, "Popular");
+  assert.equal(manifest.name, "BetterPosters for Nuvio");
   assert.deepEqual(decodeCatalogId(manifest.catalogs[0].id), { upstreamIndex: 0, catalogId: "popular" });
   assert.ok(manifest.resources.some((resource) => resource.name === "meta"));
   assert.ok(manifest.resources.some((resource) => resource.name === "stream"));
@@ -45,4 +46,13 @@ test("builds a Nuvio-compatible aggregate manifest", () => {
     upstreamIndex: 3,
     catalogId: "catalog/with symbols",
   });
+});
+
+test("names a single wrapped addon after its upstream", () => {
+  const config = createConfig(["https://catalog.example/manifest.json"]);
+  const manifest = buildProxyManifest(config, [{
+    manifestUrl: config.upstreams[0],
+    manifest: { id: "nuvio", name: "Nuvio Catalog Addon", version: "1.0.0", types: ["movie"], resources: ["catalog"], catalogs: [] },
+  }], "https://proxy.example");
+  assert.equal(manifest.name, "Nuvio Catalog - BetterPosters");
 });
